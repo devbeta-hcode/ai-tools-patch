@@ -41,7 +41,7 @@
 # Telegram
  - https://t.me/me_hcode
 
-## Disclaimer for Use of Open Source Code
+## Disclaimer for Use of Tools
 
   # 1. Scope of Use
   This source code is provided as “as-is” and under an open-source model. By using, copying, modifying, or distributing this code, you agree to the terms stated below.
