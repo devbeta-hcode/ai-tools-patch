@@ -1,0 +1,338 @@
+{
+  "info": {
+    "name": "GeminiTools API",
+    "_postman_id": "gemini-tools-collection",
+    "description": "Gemini Chat API Proxy — OpenAI-compatible endpoints powered by Google Gemini via Electron.\n\n**Features:**\n- OpenAI-compatible `/v1/chat/completions` (non-streaming & real SSE streaming)\n- SQLite conversation tracking with auto-match for Cline/Void\n- Simple `/api/chat` endpoint for direct usage\n- 3 conversation modes: explicit ID, auto-match from history, new\n\n**Default:** http://localhost:9999 (configurable via PORT env var)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9999"
+    },
+    {
+      "key": "conversation_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Info",
+      "description": "Service health, model listing, and conversation management endpoints.",
+      "item": [
+        {
+          "name": "GET /v1/index - Service info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/index",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "index"]
+            },
+            "description": "Returns service status and list of available endpoints."
+          }
+        },
+        {
+          "name": "GET /v1/models - List models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/models",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "models"]
+            },
+            "description": "OpenAI-compatible model listing. Returns a single model: `gemini`."
+          }
+        },
+        {
+          "name": "GET /v1/conversations - List conversations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/conversations?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "conversations"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Max conversations to return (1-200, default 50)"
+                }
+              ]
+            },
+            "description": "List stored conversations from SQLite, ordered by most recently updated. Includes first user message preview."
+          }
+        },
+        {
+          "name": "DELETE /v1/conversations/:id - Delete conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/conversations/{{conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "conversations", "{{conversation_id}}"]
+            },
+            "description": "Delete a conversation and all its messages from SQLite."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Simple Chat",
+      "description": "Direct chat endpoint — simpler API, no OpenAI format. Returns raw Gemini conversation IDs for manual continuation.",
+      "item": [
+        {
+          "name": "POST /api/chat - New conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Xin chào, bạn là ai?\",\n  \"lang\": \"vi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Start a new conversation.\n\n**Body:**\n- `message` (required): The user message\n- `lang` (optional): Language code, default `vi`\n\n**Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"Xin chào! Tôi là...\",\n  \"conversation_id\": \"...\",\n  \"response_id\": \"...\",\n  \"choice_id\": \"...\"\n}\n```"
+          }
+        },
+        {
+          "name": "POST /api/chat - Continue conversation",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"Tiếp tục câu hỏi trước đó\",\n  \"conversation_id\": \"PASTE_conversation_id_HERE\",\n  \"response_id\": \"PASTE_response_id_HERE\",\n  \"choice_id\": \"PASTE_choice_id_HERE\",\n  \"lang\": \"vi\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Continue an existing conversation by passing IDs from previous response.\n\n**Body:**\n- `message` (required): The user message\n- `conversation_id`: Gemini conversation ID from previous response\n- `response_id`: Gemini response ID from previous response\n- `choice_id`: Gemini choice ID from previous response\n- `lang` (optional): Language code, default `vi`"
+          }
+        }
+      ]
+    },
+    {
+      "name": "OpenAI Compatible",
+      "description": "OpenAI-compatible `/v1/chat/completions` endpoint. Works with Cline, Void, and other OpenAI-compatible clients.\n\n**Conversation modes:**\n1. `conversation_id` provided → continue that conversation\n2. No ID but messages match stored history → auto-continue (Cline/Void auto-match)\n3. Completely new → start fresh conversation\n\n**Streaming:** Set `stream: true` for real SSE streaming (tokens appear progressively via console-message channel).",
+      "item": [
+        {
+          "name": "POST /v1/chat/completions - New (non-streaming)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "  console.log('Saved conversation_id:', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Bạn là một trợ lý AI hữu ích.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Tên bạn là gì?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "New conversation, non-streaming. Auto-saves `conversation_id` to collection variable.\n\n**Response:**\n```json\n{\n  \"id\": \"chatcmpl-...\",\n  \"object\": \"chat.completion\",\n  \"model\": \"gemini\",\n  \"conversation_id\": \"conv_...\",\n  \"choices\": [{\n    \"index\": 0,\n    \"message\": { \"role\": \"assistant\", \"content\": \"...\" },\n    \"finish_reason\": \"stop\"\n  }],\n  \"usage\": { \"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0 }\n}\n```"
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Continue (explicit ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Câu hỏi trước tôi hỏi gì?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Continue conversation using explicit `conversation_id`. Only the new user message is sent to Gemini."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Continue (auto-match)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"Bạn là một trợ lý AI hữu ích.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Tên bạn là gì?\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"Tôi là Gemini, trợ lý AI của Google.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"Bạn có thể làm gì?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Auto-match mode (Cline/Void style). Send full message history — if stored messages are a prefix of incoming messages, the existing Gemini conversation is automatically continued. No `conversation_id` needed.\n\nThis is how Cline and Void work: they send the entire chat history each time, and the server matches it to an existing conversation."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Stream (new)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Streaming responses are SSE - parse last chunk for conversation_id",
+                  "var body = pm.response.text();",
+                  "var lines = body.split('\\n').filter(l => l.startsWith('data: ') && l !== 'data: [DONE]');",
+                  "if (lines.length > 0) {",
+                  "  try {",
+                  "    var last = JSON.parse(lines[0].slice(6));",
+                  "    if (last.conversation_id) {",
+                  "      pm.collectionVariables.set('conversation_id', last.conversation_id);",
+                  "      console.log('Saved conversation_id:', last.conversation_id);",
+                  "    }",
+                  "  } catch(e) {}",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a Python function to calculate fibonacci numbers\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Real SSE streaming. Tokens appear progressively as Gemini generates them.\n\n**SSE Format:**\n```\ndata: {\"id\":\"chatcmpl-...\",\"object\":\"chat.completion.chunk\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"...\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-...\",\"choices\":[{\"delta\":{\"content\":\"...\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-...\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n```\n\nEach chunk contains `conversation_id` for continuation."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Stream (continue)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"stream\": true,\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Now make it use memoization\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Continue an existing conversation with streaming enabled. Uses `conversation_id` from a previous request."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Cline format (array content)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gemini\",\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Explain this code:\"\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"console.log('hello world')\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Cline sends content as an array of `{type, text}` objects. The server normalizes this to plain text automatically.\n\nThis tests that content normalization works correctly for Cline/Void integration."
+          }
+        }
+      ]
+    }
+  ]
+}
