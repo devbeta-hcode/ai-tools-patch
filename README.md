@@ -44,14 +44,14 @@
 ## Disclaimer for Use of Tools
 
   # 1. Scope of Use
-  This source code is provided as “as-is” and under an open-source model. By using, copying, modifying, or distributing this code, you agree to the terms stated below.
+  This Tools is provided as “as-is” and under an Tools model. By using, copying, modifying, or distributing this code, you agree to the terms stated below.
   
   2. No Liability for Misuse
-  The author assumes no responsibility or liability for any misuse, unlawful use, prohibited activities, damage, or any consequences arising from the use of this source code.
+  The author assumes no responsibility or liability for any misuse, unlawful use, prohibited activities, damage, or any consequences arising from the use of this Tools.
   All responsibility lies solely with the end user.
   
   # 3. No Warranty
-  This source code is provided without any warranties, including but not limited to:
+  This Tools is provided without any warranties, including but not limited to:
   
   Fitness for any particular purpose
   
