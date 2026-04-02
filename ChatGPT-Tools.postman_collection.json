@@ -1,0 +1,477 @@
+{
+  "info": {
+    "name": "ChatGPT-Tools API",
+    "_postman_id": "chatgpt-tools-collection",
+    "description": "ChatGPT proxy — OpenAI-compatible endpoints powered by ChatGPT via Electron DOM relay.\n\n**Features:**\n- OpenAI-compatible `/v1/chat/completions` (non-streaming & real SSE streaming)\n- SQLite conversation tracking with auto-match for Cline/Void\n- Simple `/api/chat` endpoint for direct usage\n- 3 conversation modes: explicit ID, auto-match from history, new\n- Debug endpoints for token inspection, window control, and latency tracking\n\n**Default:** http://localhost:9999 (configurable via PORT env var)",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:9999"
+    },
+    {
+      "key": "conversation_id",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health & Info",
+      "description": "Service health, model listing, and conversation management endpoints.",
+      "item": [
+        {
+          "name": "GET /v1/index - Service info",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/index",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "index"]
+            },
+            "description": "Returns service status and list of available endpoints."
+          }
+        },
+        {
+          "name": "GET /v1/models - List models",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/models",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "models"]
+            },
+            "description": "OpenAI-compatible model listing. Returns available ChatGPT models (e.g. `gpt-4o`, `gpt-4o-mini`)."
+          }
+        },
+        {
+          "name": "GET /v1/conversations - List conversations",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/conversations?limit=50",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "conversations"],
+              "query": [
+                {
+                  "key": "limit",
+                  "value": "50",
+                  "description": "Max conversations to return (1-200, default 50)"
+                }
+              ]
+            },
+            "description": "List stored conversations from SQLite, ordered by most recently updated. Includes first user message preview."
+          }
+        },
+        {
+          "name": "DELETE /v1/conversations/:id - Delete conversation",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/v1/conversations/{{conversation_id}}",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "conversations", "{{conversation_id}}"]
+            },
+            "description": "Delete a conversation and all its messages from SQLite."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Simple Chat",
+      "description": "Direct chat endpoint — simpler alternative to the OpenAI-compatible API. Returns a plain text reply with a conversation_id for continuation.",
+      "item": [
+        {
+          "name": "POST /api/chat - New conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "  console.log('Saved conversation_id:', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What is 2 + 2?\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Start a new ChatGPT conversation.\n\n**Body:**\n- `message` (required): The user message\n\n**Response:**\n```json\n{\n  \"success\": true,\n  \"message\": \"4\",\n  \"conversation_id\": \"conv_...\"\n}\n```\n\nThe `conversation_id` is saved to the collection variable automatically."
+          }
+        },
+        {
+          "name": "POST /api/chat - Continue conversation",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"message\": \"What did I just ask you?\",\n  \"conversation_id\": \"{{conversation_id}}\"\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/api/chat",
+              "host": ["{{base_url}}"],
+              "path": ["api", "chat"]
+            },
+            "description": "Continue an existing ChatGPT conversation.\n\n**Body:**\n- `message` (required): The user message\n- `conversation_id` (optional): From a previous `/api/chat` response. Omit to start a new conversation."
+          }
+        }
+      ]
+    },
+    {
+      "name": "OpenAI Compatible",
+      "description": "OpenAI-compatible `/v1/chat/completions` endpoint. Works with Cline, Void, and any OpenAI-compatible client.\n\n**Conversation modes:**\n1. `conversation_id` provided → continue that conversation\n2. No ID but messages match stored history → auto-continue (Cline/Void auto-match)\n3. Completely new → start fresh conversation\n\n**Streaming:** Set `stream: true` for real SSE streaming. Tokens appear progressively as ChatGPT generates them.",
+      "item": [
+        {
+          "name": "POST /v1/chat/completions - New (non-streaming)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "  console.log('Saved conversation_id:', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful assistant.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the capital of France?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "New conversation, non-streaming. Auto-saves `conversation_id` to collection variable.\n\n**Response:**\n```json\n{\n  \"id\": \"chatcmpl-...\",\n  \"object\": \"chat.completion\",\n  \"model\": \"gpt-4o\",\n  \"conversation_id\": \"conv_...\",\n  \"choices\": [{\n    \"index\": 0,\n    \"message\": { \"role\": \"assistant\", \"content\": \"Paris.\" },\n    \"finish_reason\": \"stop\"\n  }],\n  \"usage\": { \"prompt_tokens\": 0, \"completion_tokens\": 0, \"total_tokens\": 0 }\n}\n```"
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Continue (explicit ID)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"What was my previous question?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Continue conversation using explicit `conversation_id`. Only the new user message is sent to ChatGPT; prior history is retrieved from SQLite."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Continue (auto-match)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json.conversation_id) {",
+                  "  pm.collectionVariables.set('conversation_id', json.conversation_id);",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"messages\": [\n    {\n      \"role\": \"system\",\n      \"content\": \"You are a helpful assistant.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the capital of France?\"\n    },\n    {\n      \"role\": \"assistant\",\n      \"content\": \"Paris.\"\n    },\n    {\n      \"role\": \"user\",\n      \"content\": \"What is the population of that city?\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Auto-match mode (Cline/Void style). Send the full message history — if stored messages are a prefix of incoming messages, the existing conversation is automatically continued. No `conversation_id` needed.\n\nThis is how Cline and Void work: they send the entire chat history each time, and the server matches it to an existing conversation."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Stream (new)",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "exec": [
+                  "// Streaming responses are SSE - parse last chunk for conversation_id",
+                  "var body = pm.response.text();",
+                  "var lines = body.split('\\n').filter(l => l.startsWith('data: ') && l !== 'data: [DONE]');",
+                  "if (lines.length > 0) {",
+                  "  try {",
+                  "    var last = JSON.parse(lines[0].slice(6));",
+                  "    if (last.conversation_id) {",
+                  "      pm.collectionVariables.set('conversation_id', last.conversation_id);",
+                  "      console.log('Saved conversation_id:', last.conversation_id);",
+                  "    }",
+                  "  } catch(e) {}",
+                  "}"
+                ],
+                "type": "text/javascript"
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Write a Python function to calculate fibonacci numbers\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Real SSE streaming. Tokens appear progressively as ChatGPT generates them.\n\n**SSE Format:**\n```\ndata: {\"id\":\"chatcmpl-...\",\"object\":\"chat.completion.chunk\",\"conversation_id\":\"conv_...\",\"choices\":[{\"delta\":{\"role\":\"assistant\",\"content\":\"\"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-...\",\"choices\":[{\"delta\":{\"content\":\"def \"},\"finish_reason\":null}]}\n\ndata: {\"id\":\"chatcmpl-...\",\"choices\":[{\"delta\":{},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n```\n\n`conversation_id` is included in the first chunk for continuation."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Stream (continue)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"stream\": true,\n  \"conversation_id\": \"{{conversation_id}}\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": \"Now make it use memoization\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Continue an existing conversation with streaming enabled. Uses `conversation_id` from a previous request."
+          }
+        },
+        {
+          "name": "POST /v1/chat/completions - Cline format (array content)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"model\": \"gpt-4o\",\n  \"stream\": true,\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": [\n        {\n          \"type\": \"text\",\n          \"text\": \"Explain this code:\"\n        },\n        {\n          \"type\": \"text\",\n          \"text\": \"console.log('hello world')\"\n        }\n      ]\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{base_url}}/v1/chat/completions",
+              "host": ["{{base_url}}"],
+              "path": ["v1", "chat", "completions"]
+            },
+            "description": "Cline sends content as an array of `{type, text}` objects. The server normalizes this to plain text automatically.\n\nThis tests that content normalization works correctly for Cline/Void integration."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Debug",
+      "description": "Debug and diagnostic endpoints for inspecting internal state, controlling the hidden ChatGPT window, and measuring latency.",
+      "item": [
+        {
+          "name": "GET /debug/tokens - Show auth tokens",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/tokens",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "tokens"]
+            },
+            "description": "Returns the current ChatGPT auth tokens (access token, etc.) extracted from the hidden BrowserWindow session."
+          }
+        },
+        {
+          "name": "GET /debug/show-window - Show ChatGPT window",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/show-window",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "show-window"]
+            },
+            "description": "Makes the hidden ChatGPT BrowserWindow visible. Useful for debugging automation issues."
+          }
+        },
+        {
+          "name": "GET /debug/hide-window - Hide ChatGPT window",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/hide-window",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "hide-window"]
+            },
+            "description": "Hides the ChatGPT BrowserWindow after showing it with `/debug/show-window`."
+          }
+        },
+        {
+          "name": "GET /debug/latency - Show latency stats",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/latency",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "latency"]
+            },
+            "description": "Returns latency statistics for recent requests: min, max, average, and per-request breakdown."
+          }
+        },
+        {
+          "name": "POST /debug/latency/reset - Reset latency stats",
+          "request": {
+            "method": "POST",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/latency/reset",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "latency", "reset"]
+            },
+            "description": "Resets accumulated latency statistics back to zero."
+          }
+        },
+        {
+          "name": "GET /debug/refresh-token - Force token refresh",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/refresh-token",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "refresh-token"]
+            },
+            "description": "Forces a ChatGPT auth token refresh. Useful when requests start failing with 401/403 errors."
+          }
+        },
+        {
+          "name": "GET /debug/cookies - Show session cookies",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/cookies",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "cookies"]
+            },
+            "description": "Returns the current cookies from the ChatGPT BrowserWindow session, useful for verifying login state."
+          }
+        },
+        {
+          "name": "GET /debug/cookie-test - Test cookie validity",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{base_url}}/debug/cookie-test",
+              "host": ["{{base_url}}"],
+              "path": ["debug", "cookie-test"]
+            },
+            "description": "Makes a test request to ChatGPT using the current session cookies and reports whether authentication is working."
+          }
+        }
+      ]
+    }
+  ]
+}
