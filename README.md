@@ -1,9 +1,11 @@
 # The patches for web code providing AI, such as Gemini, use cookies, and I've transformed this into an OpenAI (API) structure.
 - Gemini ✅
-- Chat GPT ⏳
+- Chat GPT ✅
 
 # Please note that each time you start the tool, make sure to get a fresh batch of cookies.
 <img width="885" height="545" alt="image" src="https://github.com/user-attachments/assets/cd89113f-be94-41ef-a2ed-ff2eb435d0de" />
+<img width="884" height="543" alt="image" src="https://github.com/user-attachments/assets/08972898-f518-4df4-9885-83f1dbd80552" />
+
 
 # VS Code utility support
 - Cline
@@ -31,7 +33,7 @@
 
     ```
 
-# Learn more about the API at `GeminiTools.postman_collection.json` , please add it. `postman`
+# Learn more about the API at `GeminiTools.postman_collection.json` or `ChatGPT-Tools.postman_collection.json` , please add it. `postman`
 
 
 # Please support me by using the services at
